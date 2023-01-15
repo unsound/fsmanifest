@@ -1,0 +1,8 @@
+fsmanifest is a tool for archiving file system metadata and checksums of a
+complete filesystem tree, what we here call a "manifest" of a file system tree.
+It is meant to be used for backup and forensic purposes.
+
+As much metadata as possible is backed up, but non-portable metadata is omitted
+by default. This is configurable through the compile-time define SHOW_ALL_FIELDS
+which can be set to 1 to print non-portable metadata like inode numbers, device
+number of filesystem root, link counts, directory sizes, etc.
