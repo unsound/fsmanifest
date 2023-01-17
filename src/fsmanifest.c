@@ -295,7 +295,7 @@ static ssize_t queue_item_listxattr(
 			namespace,
 			xattr_list,
 			xattr_list_size);
-	if(ret > 0) {
+	if(ret > 0 && xattr_list) {
 		/* The FreeBSD xattr list format is different from the
 		 * Linux/macOS/Solaris format. It leads each entry with a length
 		 * byte and doesn't NULL-terminate each string. Luckily for us
