@@ -34,6 +34,12 @@
 #define IS_LINUX 0
 #endif
 
+#if defined(__FreeBSD__)
+#define IS_BSD 1
+#else
+#define IS_BSD 0
+#endif
+
 #if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
 #define IS_SOLARIS 1
 #else
@@ -54,6 +60,9 @@
 #include <fcntl.h>
 #include <pwd.h>
 #include <unistd.h>
+#if IS_BSD
+#include <sys/extattr.h>
+#endif
 #include <sys/mount.h>
 #include <sys/param.h>
 #include <sys/stat.h>
@@ -85,7 +94,7 @@
 #define SHOW_ALL_FIELDS 0
 #endif
 
-#if IS_LINUX || IS_SOLARIS
+#if IS_LINUX || IS_SOLARIS || IS_BSD
 #define st_atimespec st_atim
 #define st_mtimespec st_mtim
 #define st_ctimespec st_ctim
@@ -248,6 +257,9 @@ static int queue_item_open(
 static ssize_t queue_item_listxattr(
 		queue_item *item,
 		const char *item_path,
+#if IS_BSD
+		int namespace,
+#endif
 		char *xattr_list,
 		size_t xattr_list_size)
 {
@@ -269,6 +281,44 @@ static ssize_t queue_item_listxattr(
 			, 0
 #endif
 			);
+#elif IS_BSD
+	ssize_t ret;
+
+	ret = (item->fd != -1) ?
+		extattr_list_fd(
+			item->fd,
+			namespace,
+			xattr_list,
+			xattr_list_size) :
+		extattr_list_link(
+			item_path,
+			namespace,
+			xattr_list,
+			xattr_list_size);
+	if(ret > 0) {
+		/* The FreeBSD xattr list format is different from the
+		 * Linux/macOS/Solaris format. It leads each entry with a length
+		 * byte and doesn't NULL-terminate each string. Luckily for us
+		 * we can easily transform it in place to the Linux format by
+		 * shifting the entry back by one byte and write a NULL
+		 * terminator in the last byte. This avoids a lot of custom code
+		 * paths for FreeBSD. */
+		ssize_t i = 0;
+		while(i < ret) {
+			char *const entry = &xattr_list[i];
+			const unsigned char length = *((unsigned char*) entry);
+
+			print_error("Got %hhu-byte xattr entry: %.*s...",
+				length, length, &entry[1]);
+
+			memmove(&entry[0], &entry[1], length);
+			entry[length] = '\0';
+
+			i += 1 + length;
+		}
+	}
+
+	return ret;
 #elif IS_SOLARIS
 	int err = 0;
 	ssize_t res = 0;
@@ -346,12 +396,15 @@ out:
 	}
 
 	return err ? -1 : res;
-#endif /* IS_MACOS || IS_LINUX ... IS_SOLARIS */
+#endif /* IS_MACOS || IS_LINUX ... IS_BSD ... IS_SOLARIS */
 }
 
 static ssize_t queue_item_getxattr(
 		queue_item *item,
 		const char *item_path,
+#if IS_BSD
+		int namespace,
+#endif
 		const char *name,
 		char *value,
 		size_t size)
@@ -376,6 +429,20 @@ static ssize_t queue_item_getxattr(
 			, 0, 0
 #endif
 			);
+#elif IS_BSD
+	return (item->fd != -1) ?
+		extattr_get_fd(
+			item->fd,
+			namespace,
+			name,
+			value,
+			size) :
+		extattr_get_link(
+			item_path,
+			namespace,
+			name,
+			value,
+			size);
 #elif IS_SOLARIS
 	int err = 0;
 	ssize_t res = 0;
@@ -421,7 +488,7 @@ out:
 	}
 
 	return err ? -1 : res;
-#endif /* IS_MACOS ... IS_SOLARIS */
+#endif /* IS_MACOS || IS_LINUX ... IS_BSD ... IS_SOLARIS */
 }
 
 static int compare_queue_items(const void *_a, const void *_b)
@@ -670,6 +737,12 @@ out:
 int main(int argc, char** argv)
 {
 	static const int open_flags = O_RDONLY | O_NONBLOCK | O_SYMLINK;
+#if IS_BSD
+	const int namespaces[2] = {
+		EXTATTR_NAMESPACE_USER,
+		EXTATTR_NAMESPACE_SYSTEM,
+	};
+#endif
 
 	int ret = (EXIT_FAILURE);
 	int err = 0;
@@ -678,6 +751,10 @@ int main(int argc, char** argv)
 	char *cur_path = NULL;
 	queue_item *root_item = NULL;
 	queue_item *queue = NULL;
+	queue_item *item = NULL;
+#if IS_BSD
+	size_t n = 0;
+#endif
 	char *xattr_list = NULL;
 
 	memset(&mountinfo, 0, sizeof(mountinfo));
@@ -700,19 +777,48 @@ int main(int argc, char** argv)
 		goto out;
 	}
 
-	queue = root_item;
-
-	while(queue) {
-		queue_item *item = queue->next_item;
+	for(queue = root_item; queue; queue_item_release(&item)) {
 		struct stat stbuf;
 #ifdef HAVE_STATX
 		struct statx stxbuf;
 #endif
+#if SHOW_ALL_FIELDS
+		uint32_t blksize = 0;
+#endif /* SHOW_ALL_FIELDS */
+		uint32_t nlink = 0;
+		uint32_t uid = 0;
+		uint32_t gid = 0;
+		uint16_t mode = 0;
+#if SHOW_ALL_FIELDS
+		uint64_t ino = 0;
+#endif /* SHOW_ALL_FIELDS */
+		uint64_t size = 0;
+#if SHOW_ALL_FIELDS
+		uint64_t blocks = 0;
+#endif /* SHOW_ALL_FIELDS */
+		uint64_t atimesec = 0;
+		uint32_t atimensec = 0;
+#if IS_MACOS || defined(HAVE_STATX)
+		uint64_t btimesec = 0;
+		uint32_t btimensec = 0;
+#endif /* IS_MACOS || defined(HAVE_STATX) */
+		uint64_t ctimesec = 0;
+		uint32_t ctimensec = 0;
+		uint64_t mtimesec = 0;
+		uint32_t mtimensec = 0;
+		uint32_t rdev_major = 0;
+		uint32_t rdev_minor = 0;
+#if SHOW_ALL_FIELDS
+		uint32_t dev_major = 0;
+		uint32_t dev_minor = 0;
+#endif /* SHOW_ALL_FIELDS */
 
 		memset(&stbuf, 0, sizeof(stbuf));
 #ifdef HAVE_STATX
 		memset(&stxbuf, 0, sizeof(stxbuf));
 #endif
+
+		item = queue->next_item;
 
 		if(cur_path) {
 			free(cur_path);
@@ -734,6 +840,7 @@ int main(int argc, char** argv)
 		if(err && lstat(cur_path, &stbuf)) {
 			print_perror(err, "Error while opening \"%s\"",
 				cur_path);
+			continue;
 		}
 #ifdef HAVE_STATX
 		else if(item->fd != -1 && statx(
@@ -745,128 +852,130 @@ int main(int argc, char** argv)
 		{
 			print_perror(errno, "Error while statx:ing \"%s\"",
 				cur_path);
+			continue;
 		}
 #endif
 		else if(item->fd != -1 && fstat(item->fd, &stbuf)) {
 			print_perror(errno, "Error while stat:ing \"%s\"",
 				cur_path);
+			continue;
 		}
-		else {
+
+		/* Print relevant fields in struct stat/statx. */
+		{
 #if SHOW_ALL_FIELDS
-			const uint32_t blksize =
+			blksize =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_blksize :
 #endif
 				stbuf.st_blksize;
 #endif /* SHOW_ALL_FIELDS */
-			const uint32_t nlink =
+			nlink =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_nlink :
 #endif
 				stbuf.st_nlink;
-			const uint32_t uid =
+			uid =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_uid :
 #endif
 				stbuf.st_uid;
-			const uint32_t gid =
+			gid =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_gid :
 #endif
 				stbuf.st_gid;
-			const uint16_t mode =
+			mode =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_mode :
 #endif
 				stbuf.st_mode;
 #if SHOW_ALL_FIELDS
-			const uint64_t ino =
+			ino =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_ino :
 #endif
 				stbuf.st_ino;
 #endif /* SHOW_ALL_FIELDS */
-			const uint64_t size =
+			size =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_size :
 #endif
 				stbuf.st_size;
 #if SHOW_ALL_FIELDS
-			const uint64_t blocks =
+			blocks =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_blocks :
 #endif
 				stbuf.st_blocks;
 #endif /* SHOW_ALL_FIELDS */
-			const uint64_t atimesec =
+			atimesec =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_atime.tv_sec :
 #endif
 				stbuf.st_atimespec.tv_sec;
-			const uint32_t atimensec =
+			atimensec =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_atime.tv_nsec :
 #endif
 				stbuf.st_atimespec.tv_nsec;
 #if IS_MACOS || defined(HAVE_STATX)
-			const uint64_t btimesec =
+			btimesec =
 #ifdef HAVE_STATX
 				stxbuf.stx_btime.tv_sec;
 #else
 				stbuf.st_birthtimespec.tv_sec;
 #endif /* defined(HAVE_STATX) ... */
-			const uint32_t btimensec =
+			btimensec =
 #ifdef HAVE_STATX
 				stxbuf.stx_btime.tv_nsec;
 #else
 				stbuf.st_birthtimespec.tv_nsec;
 #endif /* defined(HAVE_STATX) ... */
 #endif /* IS_MACOS || defined(HAVE_STATX) */
-			const uint64_t ctimesec =
+			ctimesec =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_ctime.tv_sec :
 #endif
 				stbuf.st_ctimespec.tv_sec;
-			const uint32_t ctimensec =
+			ctimensec =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_ctime.tv_nsec :
 #endif
 				stbuf.st_ctimespec.tv_nsec;
-			const uint64_t mtimesec =
+			mtimesec =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_mtime.tv_sec :
 #endif
 				stbuf.st_mtimespec.tv_sec;
-			const uint32_t mtimensec =
+			mtimensec =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_mtime.tv_nsec :
 #endif
 				stbuf.st_mtimespec.tv_nsec;
-			const uint32_t rdev_major =
+			rdev_major =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_rdev_major :
 #endif
 				major(stbuf.st_rdev);
-			const uint32_t rdev_minor =
+			rdev_minor =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_rdev_minor :
 #endif
 				minor(stbuf.st_rdev);
 #if SHOW_ALL_FIELDS
-			const uint32_t dev_major =
+			dev_major =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_dev_major :
 #endif
 				major(stbuf.st_dev);
-			const uint32_t dev_minor =
+			dev_minor =
 #ifdef HAVE_STATX
 				stxbuf.stx_mask ? stxbuf.stx_dev_minor :
 #endif
 				minor(stbuf.st_dev);
 #endif /* SHOW_ALL_FIELDS */
 			const char *ctime_str = NULL;
-			ssize_t xattr_list_size = 0;
-			int is_mountpoint = 0;
 
 			println("%s:", cur_path);
 #if SHOW_ALL_FIELDS
@@ -1119,6 +1228,7 @@ int main(int argc, char** argv)
 				(unsigned long long) stbuf.st_qspare[1]);
 #endif
 
+			/* Hash the file data / print the symlink target. */
 			if(item->fd != -1 &&
 				(mode & S_IFMT) == S_IFREG)
 			{
@@ -1251,10 +1361,25 @@ int main(int argc, char** argv)
 					free(buf);
 				}
 			}
+		}
+
+		/* List any extended attributes and hash their data. */
+#if IS_BSD
+		for(n = 0; n < sizeof(namespaces) / sizeof(namespaces[0]); ++n)
+#endif
+		{
+#if IS_BSD
+			const int namespace = namespaces[n];
+#endif
+
+			ssize_t xattr_list_size = 0;
 
 			xattr_list_size = queue_item_listxattr(
 				item,
 				cur_path,
+#if IS_BSD
+				namespace,
+#endif
 				NULL,
 				0);
 #if IS_LINUX
@@ -1309,6 +1434,9 @@ int main(int argc, char** argv)
 				xattr_list_size = queue_item_listxattr(
 					item,
 					cur_path,
+#if IS_BSD
+					namespace,
+#endif
 					xattr_list,
 					xattr_list_size);
 				if(xattr_list_size < 0) {
@@ -1358,9 +1486,11 @@ int main(int argc, char** argv)
 
 				printlni("Extended attributes:");
 				for(i = 0; i < xattr_list_list_length; ++i) {
-					char *cur_entry = xattr_list_list[i];
+					char *const cur_entry =
+						xattr_list_list[i];
 					const size_t cur_entry_length =
 						strlen(cur_entry);
+
 					ssize_t cur_xattr_size = 0;
 					char *cur_xattr_buf = NULL;
 					sha512_context sha512_ctx;
@@ -1374,9 +1504,13 @@ int main(int argc, char** argv)
 					}
 
 					printlnii("%s", cur_entry);
+
 					cur_xattr_size = queue_item_getxattr(
 						item,
 						cur_path,
+#if IS_BSD
+						namespace,
+#endif
 						cur_entry,
 						NULL,
 						0);
@@ -1405,6 +1539,9 @@ int main(int argc, char** argv)
 					cur_xattr_size = queue_item_getxattr(
 						item,
 						cur_path,
+#if IS_BSD
+						namespace,
+#endif
 						cur_entry,
 						cur_xattr_buf,
 						(size_t) cur_xattr_size);
@@ -1481,10 +1618,16 @@ int main(int argc, char** argv)
 					goto out;
 				}
 			}
+		}
 
-			/* We are done printing metadata and checksums for this
-			 * entry, so flush stdout. */
-			fflush(stdout);
+		/* We are done printing metadata and checksums for this entry,
+		 * so flush stdout. */
+		fflush(stdout);
+
+		/* If this is a directory, the list it and add the directory
+		 * entries to the queues after sorting them. */
+		{
+			int is_mountpoint = 0;
 
 			if((mode & S_IFMT) == S_IFDIR &&
 				!(err = matches_mountpoint(
@@ -1633,8 +1776,6 @@ int main(int argc, char** argv)
 				}
 			}
 		}
-
-		queue_item_release(&item);
 	}
 
 	ret = (EXIT_SUCCESS);

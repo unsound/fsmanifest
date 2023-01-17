@@ -66,6 +66,16 @@ case "${target_os}" in
 darwin*)
         # On macOS we use the built-in CommonCrypto. No flags needed.
         ;;
+freebsd*)
+	# On FreeBSD we check that libcrypto is available using AC_CHECK_LIB as
+	# there is no .pc file.
+	AC_CHECK_LIB(
+		[crypto],
+		[EVP_sha512],
+		[],
+		[AC_MSG_ERROR([[Cannot find the required OpenSSL libraries (need OpenSSL with SHA-512 support).]])]
+	)
+	;;
 *)
         # On other systems we use the OpenSSL library, which is located using
         # pkg-config.
