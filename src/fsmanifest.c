@@ -47,6 +47,12 @@
 #define IS_FREEBSD 0
 #endif
 
+#if defined(__NetBSD__)
+#define IS_NETBSD 1
+#else
+#define IS_NETBSD 0
+#endif
+
 #if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
 #define IS_SOLARIS 1
 #else
@@ -67,13 +73,13 @@
 #include <fcntl.h>
 #include <pwd.h>
 #include <unistd.h>
-#if IS_BSD
+#if IS_FREEBSD || IS_NETBSD
 #include <sys/extattr.h>
 #endif
 #include <sys/mount.h>
 #include <sys/param.h>
 #include <sys/stat.h>
-#if IS_SOLARIS
+#if (IS_BSD && !IS_FREEBSD && !IS_NETBSD) || IS_SOLARIS
 #include <sys/statvfs.h>
 #endif
 #if IS_LINUX || IS_SOLARIS
@@ -264,7 +270,7 @@ static int queue_item_open(
 static ssize_t queue_item_listxattr(
 		queue_item *item,
 		const char *item_path,
-#if IS_BSD
+#if IS_FREEBSD || IS_NETBSD
 		int namespace,
 #endif
 		char *xattr_list,
@@ -288,7 +294,7 @@ static ssize_t queue_item_listxattr(
 			, 0
 #endif
 			);
-#elif IS_BSD
+#elif IS_FREEBSD || IS_NETBSD
 	ssize_t ret;
 
 	ret = (item->fd != -1) ?
@@ -403,13 +409,20 @@ out:
 	}
 
 	return err ? -1 : res;
-#endif /* IS_MACOS || IS_LINUX ... IS_BSD ... IS_SOLARIS */
+#else
+	(void) item;
+	(void) item_path;
+	(void) xattr_list;
+	(void) xattr_list_size;
+
+	return 0;
+#endif /* IS_MACOS || IS_LINUX ... IS_FREEBSD || IS_NETBSD ... IS_SOLARIS ... */
 }
 
 static ssize_t queue_item_getxattr(
 		queue_item *item,
 		const char *item_path,
-#if IS_BSD
+#if IS_FREEBSD || IS_NETBSD
 		int namespace,
 #endif
 		const char *name,
@@ -436,7 +449,7 @@ static ssize_t queue_item_getxattr(
 			, 0, 0
 #endif
 			);
-#elif IS_BSD
+#elif IS_FREEBSD || IS_NETBSD
 	return (item->fd != -1) ?
 		extattr_get_fd(
 			item->fd,
@@ -495,7 +508,15 @@ out:
 	}
 
 	return err ? -1 : res;
-#endif /* IS_MACOS || IS_LINUX ... IS_BSD ... IS_SOLARIS */
+#else
+	(void) item;
+	(void) item_path;
+	(void) name;
+	(void) value;
+	(void) size;
+
+	return 0;
+#endif /* IS_MACOS || IS_LINUX ... IS_FREEBSD || IS_NETBSD ... IS_SOLARIS ... */
 }
 
 static int compare_queue_items(const void *_a, const void *_b)
@@ -744,7 +765,7 @@ out:
 int main(int argc, char** argv)
 {
 	static const int open_flags = O_RDONLY | O_NONBLOCK | O_SYMLINK;
-#if IS_BSD
+#if IS_FREEBSD || IS_NETBSD
 	const int namespaces[2] = {
 		EXTATTR_NAMESPACE_USER,
 		EXTATTR_NAMESPACE_SYSTEM,
@@ -759,7 +780,7 @@ int main(int argc, char** argv)
 	queue_item *root_item = NULL;
 	queue_item *queue = NULL;
 	queue_item *item = NULL;
-#if IS_BSD
+#if IS_FREEBSD || IS_NETBSD
 	size_t n = 0;
 #endif
 	char *xattr_list = NULL;
@@ -1373,11 +1394,11 @@ int main(int argc, char** argv)
 		}
 
 		/* List any extended attributes and hash their data. */
-#if IS_BSD
+#if IS_FREEBSD || IS_NETBSD
 		for(n = 0; n < sizeof(namespaces) / sizeof(namespaces[0]); ++n)
 #endif
 		{
-#if IS_BSD
+#if IS_FREEBSD || IS_NETBSD
 			const int namespace = namespaces[n];
 #endif
 
@@ -1386,7 +1407,7 @@ int main(int argc, char** argv)
 			xattr_list_size = queue_item_listxattr(
 				item,
 				cur_path,
-#if IS_BSD
+#if IS_FREEBSD || IS_NETBSD
 				namespace,
 #endif
 				NULL,
@@ -1443,7 +1464,7 @@ int main(int argc, char** argv)
 				xattr_list_size = queue_item_listxattr(
 					item,
 					cur_path,
-#if IS_BSD
+#if IS_FREEBSD || IS_NETBSD
 					namespace,
 #endif
 					xattr_list,
@@ -1517,7 +1538,7 @@ int main(int argc, char** argv)
 					cur_xattr_size = queue_item_getxattr(
 						item,
 						cur_path,
-#if IS_BSD
+#if IS_FREEBSD || IS_NETBSD
 						namespace,
 #endif
 						cur_entry,
@@ -1548,7 +1569,7 @@ int main(int argc, char** argv)
 					cur_xattr_size = queue_item_getxattr(
 						item,
 						cur_path,
-#if IS_BSD
+#if IS_FREEBSD || IS_NETBSD
 						namespace,
 #endif
 						cur_entry,
