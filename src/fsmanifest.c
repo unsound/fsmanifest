@@ -34,10 +34,17 @@
 #define IS_LINUX 0
 #endif
 
-#if defined(__FreeBSD__)
+#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || \
+	defined(__DragonFly__)
 #define IS_BSD 1
 #else
 #define IS_BSD 0
+#endif
+
+#if defined(__FreeBSD__)
+#define IS_FREEBSD 1
+#else
+#define IS_FREEBSD 0
 #endif
 
 #if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
@@ -101,7 +108,7 @@
 #define O_SYMLINK O_NOFOLLOW
 #endif
 
-#if IS_SOLARIS
+#if IS_SOLARIS || (IS_BSD && !IS_FREEBSD)
 #define statfs statvfs
 #endif
 
@@ -1120,7 +1127,7 @@ int main(int argc, char** argv)
 			printlni("Block size: %llu",
 				(unsigned long long) blksize);
 #endif
-#if IS_MACOS || defined(BSD)
+#if IS_MACOS || IS_BSD
 			{
 				uint32_t flags = stbuf.st_flags;
 
@@ -1161,10 +1168,12 @@ int main(int argc, char** argv)
 					flags &= ~UF_DATAVAULT;
 				}
 #endif
+#ifdef UF_HIDDEN
 				if(flags & UF_HIDDEN) {
 					print(" hidden");
 					flags &= ~UF_HIDDEN;
 				}
+#endif
 				if(flags & SF_ARCHIVED) {
 					print(" arch");
 					flags &= ~SF_ARCHIVED;
