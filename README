@@ -1,3 +1,6 @@
+General information
+-------------------
+
 fsmanifest is a tool for archiving file system metadata and checksums of a
 complete filesystem tree, what we here call a "manifest" of a file system tree.
 It is meant to be used for backup and forensic purposes.
@@ -6,3 +9,34 @@ As much metadata as possible is backed up, but non-portable metadata is omitted
 by default. This is configurable through the compile-time define SHOW_ALL_FIELDS
 which can be set to 1 to print non-portable metadata like inode numbers, device
 number of filesystem root, link counts, directory sizes, etc.
+
+
+Building
+--------
+
+If you are downloading an offical release tarball, then you only need a few
+prerequisites:
+- GNU Make
+- A C compiler, e.g. gcc or clang
+- OpenSSL library headers ('libssl-dev' package in Debian)
+- pkg-config / pkgconf (for finding the OpenSSL library headers)
+
+After this you should be able to build the source using the standard:
+  ./configure && make
+...and install it with
+  make install
+(this step might require 'sudo' as a prefix to gain the appropriate privileges)
+
+
+Working with the source
+-----------------------
+
+If you are building from the git repository you will need to generate the build
+system (which is present by default in the tarball), so you'll need a few other
+packages:
+- autoconf
+- automake
+- libtool
+
+After this, you can use './autogen.sh' to regenerate the build files needed to
+build the software (see 'Building').
