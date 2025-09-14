@@ -43,3 +43,113 @@ jobs:
       run: make check
     - name: make distcheck
       run: make distcheck
+
+  build-freebsd:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build in FreeBSD
+      id: test
+      uses: vmactions/freebsd-vm@v1
+      with:
+        usesh: true
+        prepare: |
+          pkg install -y autoconf automake libtool pkgconf
+        run: |
+          ./autogen.sh
+          ./configure CFLAGS='-Wall -Wextra'
+          make
+          make check
+          make distcheck
+
+  build-netbsd:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build in NetBSD
+      id: build
+      uses: vmactions/netbsd-vm@v1
+      with:
+        usesh: true
+        prepare: |
+          /usr/sbin/pkg_add autoconf automake libtool pkgconf
+        run: |
+          ./autogen.sh
+          ./configure CFLAGS='-Wall -Wextra'
+          make
+          make check
+          make distcheck
+
+  build-openbsd:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build in OpenBSD
+      id: test
+      uses: vmactions/openbsd-vm@v1
+      with:
+        usesh: true
+        prepare: |
+          pkg_add autoconf-2.72p0 automake-1.17 libtool pkgconf
+        run: |
+          AUTOCONF_VERSION=2.72 AUTOMAKE_VERSION=1.17 ./autogen.sh
+          ./configure CFLAGS='-Wall -Wextra'
+          make
+          make check
+          make distcheck
+
+  build-dragonflybsd:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build in DragonFly BSD
+      id: build
+      uses: vmactions/dragonflybsd-vm@v1
+      with:
+        usesh: true
+        prepare: |
+          pkg install -y autoconf autoconf-switch automake libtool pkgconf
+        run: |
+          ./autogen.sh
+          ./configure CFLAGS='-Wall -Wextra'
+          make
+          make check
+          make distcheck
+
+  build-omnios:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build in OmniOS
+      id: build
+      uses: vmactions/omnios-vm@v1
+      with:
+        usesh: true
+        prepare: |
+          pkg install build-essential autoconf automake libtool pkg-config
+        run: |
+          ./autogen.sh
+          ./configure CFLAGS='-Wall -Wextra'
+          make
+          make check
+          make distcheck
+
+  build-solaris:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build in Solaris
+      id: build
+      uses: vmactions/solaris-vm@v1
+      with:
+        usesh: true
+        prepare: |
+          pkg install base-developer-utilities gcc-c autoconf automake libtool pkg-config
+        run: |
+          ./autogen.sh
+          ./configure CFLAGS='-Wall -Wextra'
+          make
+          make check
+          make distcheck
