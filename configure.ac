@@ -1,6 +1,6 @@
 # Autoconf
 AC_PREREQ(2.59)
-AC_INIT([fsmanifest],[1.0],[catacombae@gmail.com])
+AC_INIT([fsmanifest],[1.0.1],[catacombae@gmail.com])
 AC_CONFIG_SRCDIR([src/fsmanifest.c])
 
 # Environment
