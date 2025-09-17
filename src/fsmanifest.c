@@ -1240,7 +1240,7 @@ int main(int argc, char** argv)
 				println("");
 			}
 #endif
-#if SHOW_ALL_FIELDS
+#if SHOW_ALL_FIELDS && (IS_BSD || IS_MACOS)
 			/* The st_gen field is closely related to st_ino and is
 			 * automatically tracked and updated by the filesystem.
 			 * It cannot be expected to be the same for any two
@@ -1248,7 +1248,7 @@ int main(int argc, char** argv)
 			printlni("Generation: %llu",
 				(unsigned long long) stbuf.st_gen);
 #endif
-#if SHOW_ALL_FIELDS
+#if SHOW_ALL_FIELDS && IS_MACOS
 			/* These are fields without any defined meaning, meant
 			 * for future expansion. They can be ignored. */
 			printlni("st_lspare: 0x%llX",
