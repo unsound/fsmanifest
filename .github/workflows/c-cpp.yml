@@ -16,7 +16,7 @@ jobs:
     - name: autogen
       run: ./autogen.sh
     - name: configure
-      run: ./configure
+      run: ./configure CFLAGS='-DSHOW_ALL_FIELDS=1'
     - name: make
       run: make
     - name: make check
@@ -36,7 +36,7 @@ jobs:
     - name: autogen
       run: ./autogen.sh
     - name: configure
-      run: ./configure
+      run: ./configure CFLAGS='-DSHOW_ALL_FIELDS=1'
     - name: make
       run: make
     - name: make check
@@ -59,7 +59,7 @@ jobs:
           pkg install -y autoconf automake libtool pkgconf
         run: |
           ./autogen.sh
-          ./configure CFLAGS='-Wall -Wextra'
+          ./configure CFLAGS='-Wall -Wextra -DSHOW_ALL_FIELDS=1'
           make
           make check
           make distcheck
@@ -77,7 +77,7 @@ jobs:
           /usr/sbin/pkg_add autoconf automake libtool pkgconf
         run: |
           ./autogen.sh
-          ./configure CFLAGS='-Wall -Wextra'
+          ./configure CFLAGS='-Wall -Wextra -DSHOW_ALL_FIELDS=1'
           make
           make check
           make distcheck
@@ -95,7 +95,7 @@ jobs:
           pkg_add autoconf-2.72p0 automake-1.17 libtool pkgconf
         run: |
           AUTOCONF_VERSION=2.72 AUTOMAKE_VERSION=1.17 ./autogen.sh
-          ./configure CFLAGS='-Wall -Wextra'
+          ./configure CFLAGS='-Wall -Wextra -DSHOW_ALL_FIELDS=1'
           make
           make check
           make distcheck
@@ -113,7 +113,7 @@ jobs:
           pkg install -y autoconf autoconf-switch automake libtool pkgconf
         run: |
           ./autogen.sh
-          ./configure CFLAGS='-Wall -Wextra'
+          ./configure CFLAGS='-Wall -Wextra -DSHOW_ALL_FIELDS=1'
           make
           make check
           make distcheck
@@ -131,7 +131,7 @@ jobs:
           pkg install build-essential autoconf automake libtool pkg-config
         run: |
           ./autogen.sh
-          ./configure CFLAGS='-Wall -Wextra'
+          ./configure CFLAGS='-Wall -Wextra -DSHOW_ALL_FIELDS=1'
           make
           make check
           make distcheck
@@ -149,7 +149,7 @@ jobs:
           pkg install base-developer-utilities gcc-c autoconf automake libtool pkg-config
         run: |
           ./autogen.sh
-          ./configure CFLAGS='-Wall -Wextra'
+          ./configure CFLAGS='-Wall -Wextra -DSHOW_ALL_FIELDS=1'
           make
           make check
           make distcheck
